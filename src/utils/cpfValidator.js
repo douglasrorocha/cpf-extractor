@@ -1,7 +1,8 @@
 // Extrai todos os CPFs no formato XXX.XXX.XXX-XX de um texto
 export function extractCpfs(text) {
-  const regex = /\d{3}\.\d{3}\.\d{3}-\d{2}/g;
-  const found = text.match(regex) || [];
+  const normalized = text.replace(/\0/g, "-");
+  const regex = /\d{3}\.\d{3}\.\d{3}[-\s]*\d{2}/g;
+  const found = normalized.match(regex) || [];
   return [...new Set(found)]; // remove duplicatas
 }
 

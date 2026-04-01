@@ -1,47 +1,102 @@
 <template>
   <div id="app">
-    <img alt="Vue logo" src="./assets/logo.png" />
-    <HelloWorld msg="Welcome to Your Vue.js App" />
+    <h1 class="app-title">Extrator de CPFs</h1>
+
+    <PdfUploader :loading="status === 'loading'" @upload="handleUpload" />
+    <StatusFeedback :status="status" :message="statusMessage" />
+
+    <div class="lists">
+      <CpfList title="CPFs do último upload" :cpfs="latestCpfs" />
+      <CpfList title="Todos os CPFs armazenados" :cpfs="allCpfs" />
+    </div>
   </div>
 </template>
 
 <script>
-import HelloWorld from "./components/HelloWorld.vue";
+import PdfUploader from "./components/PdfUploader.vue";
+import StatusFeedback from "./components/StatusFeedback.vue";
+import CpfList from "./components/CpfList.vue";
+
+import { extractTextFromPdf } from "./services/pdfService";
+import { uploadPdf } from "./services/storageService";
+import {
+  saveUpload,
+  getLatestUpload,
+  getAllUploads,
+} from "./services/databaseService";
 import { extractCpfs, filterValidCpfs } from "./utils/cpfValidator";
-import { getAllUploads, saveUpload } from "./services/databaseService";
+
 export default {
   name: "App",
-  components: {
-    HelloWorld,
+  components: { PdfUploader, StatusFeedback, CpfList },
+  data() {
+    return {
+      status: "idle", // 'idle' | 'loading' | 'success' | 'error'
+      statusMessage: "",
+      latestCpfs: [],
+      allCpfs: [],
+    };
   },
-  async mounted() {
-    // Teste do cpfValidator
-    const textoFalso =
-      "Aqui tem um CPF 123.456.789-09 e outro inválido 111.111.111-11";
-    const encontrados = extractCpfs(textoFalso);
-    const validos = filterValidCpfs(encontrados);
-    await saveUpload(
-      "documento-teste.pdf",
-      "http://url-falsa.com",
-      ["123.456.789-09"] // CPF já no formato correto com pontos e traço
-    );
-    console.log("CPFs encontrados:", encontrados);
-    console.log("CPFs válidos:", validos);
+  async created() {
+    await this.loadData();
+  },
+  methods: {
+    async handleUpload(file) {
+      this.status = "loading";
+      try {
+        // 1. Extrai texto do PDF
+        const text = await extractTextFromPdf(file);
 
-    // Teste do banco
-    const uploads = await getAllUploads();
-    console.log("Uploads no banco:", uploads);
+        // 2. Extrai e valida CPFs
+        console.log("TEXTO EXTRAÍDO:", JSON.stringify(text));
+        const found = extractCpfs(text);
+        console.log("CPFs ENCONTRADOS:", found);
+        const valid = filterValidCpfs(found);
+        console.log("CPFs VÁLIDOS:", valid);
+
+        if (valid.length === 0) {
+          this.status = "error";
+          this.statusMessage = "Nenhum CPF válido encontrado no PDF.";
+          return;
+        }
+
+        // 3. Faz upload do arquivo
+        const { url, fileName } = await uploadPdf(file);
+
+        // 4. Salva no banco
+        await saveUpload(fileName, url, valid);
+
+        // 5. Atualiza listas
+        await this.loadData();
+
+        this.status = "success";
+        this.statusMessage = `${valid.length} CPF(s) extraído(s) e salvos com sucesso!`;
+      } catch (err) {
+        console.error(err);
+        this.status = "error";
+        this.statusMessage = "Erro ao processar o PDF. Tente novamente.";
+      }
+    },
+
+    async loadData() {
+      const [latest, all] = await Promise.all([
+        getLatestUpload(),
+        getAllUploads(),
+      ]);
+
+      // CPFs do último upload
+      this.latestCpfs = latest?.cpfs ? Object.values(latest.cpfs) : [];
+
+      // Todos os CPFs (sem duplicatas)
+      const cpfSet = new Set();
+      Object.values(all).forEach((upload) => {
+        if (upload.cpfs)
+          Object.values(upload.cpfs).forEach((cpf) => cpfSet.add(cpf));
+      });
+      this.allCpfs = [...cpfSet];
+    },
   },
 };
 </script>
 
-<style lang="scss">
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
-}
-</style>
+<style lang="scss"></style>
