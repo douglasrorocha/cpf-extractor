@@ -1,7 +1,7 @@
-import * as pdfjsLib from "pdfjs-dist";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf";
 
 // Worker carregado da pasta public (evita problemas com webpack)
-pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
 export async function extractTextFromPdf(file) {
   const arrayBuffer = await file.arrayBuffer();
